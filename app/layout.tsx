@@ -18,6 +18,7 @@ export default function RootLayout({
         <nav className="bg-gray-900 border-b border-gray-800 px-8 py-4 flex gap-6 items-center">
           <Link href="/" className="text-red-500 font-bold text-xl">🏎️ F1 Manager</Link>
           <Link href="/dashboard" className="text-gray-400 hover:text-white transition">대시보드</Link>
+          <Link href="/team" className="text-gray-400 hover:text-white transition">팀</Link>
           <Link href="/drivers" className="text-gray-400 hover:text-white transition">드라이버</Link>
           <Link href="/garage" className="text-gray-400 hover:text-white transition">차고</Link>
           <Link href="/finances" className="text-gray-400 hover:text-white transition">재정</Link>

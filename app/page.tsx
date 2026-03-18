@@ -1,15 +1,22 @@
-import Link from 'next/link'
+import { supabase } from '@/lib/db/supabase'
+import TeamSelectClient from '@/components/TeamSelectClient'
 
-export default function Home() {
+export default async function Home() {
+  const { data: teams } = await supabase
+    .from('teams')
+    .select('*')
+    .order('budget', { ascending: false })
+
+  const { data: saves } = await supabase
+    .from('saves')
+    .select('*')
+    .order('slot')
+
   return (
-    <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center">
+    <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-8">
       <h1 className="text-6xl font-bold text-red-500 mb-4">🏎️ F1 Manager</h1>
-      <p className="text-gray-400 text-xl mb-12">나만의 F1 팀을 만들어보세요</p>
-      <div className="flex gap-4">
-        <Link href="/dashboard" className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-lg text-lg font-semibold transition">
-          게임 시작
-        </Link>
-      </div>
+      <p className="text-gray-400 text-xl mb-12">팀을 선택하고 시즌을 시작하세요</p>
+      <TeamSelectClient teams={teams || []} saves={saves || []} />
     </main>
   )
 }
