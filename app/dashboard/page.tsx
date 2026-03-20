@@ -3,67 +3,42 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/db/supabase'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function Dashboard() {
   const router = useRouter()
   const [save, setSave] = useState<any>(null)
   const [drivers, setDrivers] = useState<any[]>([])
-  const [car, setCar] = useState<any>(null)
-  const [pu, setPu] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [nextRace, setNextRace] = useState<any>(null)
   const [teamColor, setTeamColor] = useState('#ff0000')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const slot = localStorage.getItem('selectedSlot')
     const color = localStorage.getItem('selectedTeamColor') || '#ff0000'
     setTeamColor(color)
-
-    if (!slot) {
-      router.push('/')
-      return
-    }
+    if (!slot) { router.push('/'); return }
 
     const fetchData = async () => {
       const { data: saveData } = await supabase
-        .from('saves')
-        .select('*, teams(*)')
-        .eq('slot', slot)
-        .single()
-
-      if (!saveData) {
-        router.push('/')
-        return
-      }
-
+        .from('saves').select('*').eq('slot', slot).single()
+      if (!saveData) { router.push('/'); return }
       setSave(saveData)
 
       const { data: driverData } = await supabase
-        .from('drivers')
-        .select('*')
-        .eq('team_id', saveData.team_id)
-
+        .from('drivers').select('*').eq('team_id', saveData.team_id)
       setDrivers(driverData || [])
 
-      const { data: carData } = await supabase
-        .from('cars')
-        .select('*')
-        .eq('team_id', saveData.team_id)
-        .single()
-
-      setCar(carData)
-
-      if (carData?.power_unit_id) {
-        const { data: puData } = await supabase
-          .from('power_units')
-          .select('*')
-          .eq('id', carData.power_unit_id)
-          .single()
-        setPu(puData)
-      }
+      const { data: raceData } = await supabase
+        .from('races').select('*')
+        .eq('season', 2026)
+        .eq('status', 'upcoming')
+        .order('race_date', { ascending: true })
+        .limit(1)
+      setNextRace(raceData?.[0] || null)
 
       setLoading(false)
     }
-
     fetchData()
   }, [router])
 
@@ -72,6 +47,10 @@ export default function Dashboard() {
       <p className="text-gray-400">불러오는 중...</p>
     </main>
   )
+
+  const daysUntilRace = nextRace
+    ? Math.ceil((new Date(nextRace.race_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+    : null
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-8">
@@ -83,149 +62,86 @@ export default function Dashboard() {
           style={{ borderColor: teamColor, backgroundColor: `${teamColor}15` }}
         >
           <p className="text-gray-400 text-sm mb-1">2026 시즌</p>
-          <h1 className="text-4xl font-bold" style={{ color: teamColor }}>
-            {save?.team_name}
-          </h1>
-          <div className="flex gap-6 mt-3">
+          <h1 className="text-4xl font-bold" style={{ color: teamColor }}>{save?.team_name}</h1>
+          <div className="flex gap-8 mt-4">
             <div>
-              <p className="text-gray-400 text-sm">예산</p>
-              <p className="text-green-400 font-bold">${(save?.budget / 1000000).toFixed(0)}M</p>
+              <p className="text-gray-400 text-xs mb-1">예산</p>
+              <p className="text-green-400 font-bold text-lg">${(save?.budget / 1000000).toFixed(1)}M</p>
             </div>
             <div>
-              <p className="text-gray-400 text-sm">포인트</p>
-              <p className="text-yellow-400 font-bold">{save?.points} pts</p>
+              <p className="text-gray-400 text-xs mb-1">컨스트럭터 포인트</p>
+              <p className="text-yellow-400 font-bold text-lg">{save?.points} pts</p>
             </div>
             <div>
-              <p className="text-gray-400 text-sm">다음 레이스</p>
-              <p className="text-white font-bold">라운드 {save?.current_race}</p>
+              <p className="text-gray-400 text-xs mb-1">완료 레이스</p>
+              <p className="text-white font-bold text-lg">{(save?.current_race || 1) - 1} / 22</p>
             </div>
           </div>
         </div>
 
-        {/* 드라이버 */}
-        <h2 className="text-xl font-bold mb-4" style={{ color: teamColor }}>👥 드라이버</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          {drivers.map((driver) => (
-            <div key={driver.id} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="text-lg font-bold mb-4">{driver.name}</h3>
-              <div className="grid grid-cols-2 gap-4">
-                {/* 페이스 */}
-                <div>
-                  <p className="text-xs font-bold mb-2 uppercase tracking-widest" style={{ color: teamColor }}>⚡ Pace</p>
-                  {[
-                    { label: 'Qualifying', value: driver.actual_qualifying_pace },
-                    { label: 'Race', value: driver.actual_race_pace },
-                    { label: 'Wet', value: driver.actual_wet_driving },
-                  ].map((stat) => (
-                    <div key={stat.label} className="flex items-center gap-2 mb-1.5">
-                      <span className="text-gray-400 text-xs w-16">{stat.label}</span>
-                      <div className="flex-1 bg-gray-800 rounded-full h-1.5">
-                        <div className="h-1.5 rounded-full" style={{ width: `${stat.value}%`, backgroundColor: teamColor }} />
-                      </div>
-                      <span className="text-white text-xs font-bold w-6">{stat.value}</span>
-                    </div>
-                  ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+          {/* 다음 레이스 */}
+          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+            <p className="text-gray-500 text-xs uppercase tracking-widest mb-4">🏁 다음 레이스</p>
+            {nextRace ? (
+              <>
+                <p className="text-xl font-bold mb-1">{nextRace.circuit_name}</p>
+                <p className="text-gray-400 text-sm mb-3">{nextRace.race_date}</p>
+                <div className="flex items-center gap-3">
+                  <span
+                    className="text-2xl font-bold"
+                    style={{ color: teamColor }}
+                  >
+                    D-{daysUntilRace}
+                  </span>
+                  {nextRace.sprint && (
+                    <span className="bg-yellow-500 text-yellow-950 text-xs font-bold px-2 py-1 rounded-full">
+                      스프린트
+                    </span>
+                  )}
                 </div>
-                {/* 일관성 */}
-                <div>
-                  <p className="text-xs font-bold mb-2 uppercase tracking-widest" style={{ color: teamColor }}>🔄 Consistency</p>
-                  {[
-                    { label: 'Stamina', value: driver.actual_stamina },
-                    { label: 'Tyre Mgmt', value: driver.actual_tyre_management },
-                    { label: 'Error Avoid', value: driver.actual_error_avoidance },
-                  ].map((stat) => (
-                    <div key={stat.label} className="flex items-center gap-2 mb-1.5">
-                      <span className="text-gray-400 text-xs w-16">{stat.label}</span>
-                      <div className="flex-1 bg-gray-800 rounded-full h-1.5">
-                        <div className="h-1.5 rounded-full" style={{ width: `${stat.value}%`, backgroundColor: teamColor }} />
-                      </div>
-                      <span className="text-white text-xs font-bold w-6">{stat.value}</span>
-                    </div>
-                  ))}
+              </>
+            ) : (
+              <p className="text-gray-500">시즌 종료</p>
+            )}
+          </div>
+
+          {/* 드라이버 순위 */}
+          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+            <p className="text-gray-500 text-xs uppercase tracking-widest mb-4">👥 우리 팀 드라이버</p>
+            {drivers.map((driver, i) => (
+              <div key={driver.id} className="flex justify-between items-center py-2 border-b border-gray-800 last:border-0">
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-600 text-sm w-4">{i + 1}</span>
+                  <span className="font-bold">{driver.name}</span>
                 </div>
-                {/* 레이스크래프트 */}
-                <div>
-                  <p className="text-xs font-bold mb-2 uppercase tracking-widest" style={{ color: teamColor }}>🏁 Racecraft</p>
-                  {[
-                    { label: 'Overtaking', value: driver.actual_overtaking },
-                    { label: 'Defending', value: driver.actual_defending },
-                    { label: 'Starts', value: driver.actual_starts },
-                  ].map((stat) => (
-                    <div key={stat.label} className="flex items-center gap-2 mb-1.5">
-                      <span className="text-gray-400 text-xs w-16">{stat.label}</span>
-                      <div className="flex-1 bg-gray-800 rounded-full h-1.5">
-                        <div className="h-1.5 rounded-full" style={{ width: `${stat.value}%`, backgroundColor: teamColor }} />
-                      </div>
-                      <span className="text-white text-xs font-bold w-6">{stat.value}</span>
-                    </div>
-                  ))}
-                </div>
-                {/* 경험 */}
-                <div>
-                  <p className="text-xs font-bold mb-2 uppercase tracking-widest" style={{ color: teamColor }}>🧠 Experience</p>
-                  {[
-                    { label: 'Awareness', value: driver.actual_awareness },
-                    { label: 'Composure', value: driver.actual_composure },
-                    { label: 'Tech FB', value: driver.actual_technical_feedback },
-                  ].map((stat) => (
-                    <div key={stat.label} className="flex items-center gap-2 mb-1.5">
-                      <span className="text-gray-400 text-xs w-16">{stat.label}</span>
-                      <div className="flex-1 bg-gray-800 rounded-full h-1.5">
-                        <div className="h-1.5 rounded-full" style={{ width: `${stat.value}%`, backgroundColor: teamColor }} />
-                      </div>
-                      <span className="text-white text-xs font-bold w-6">{stat.value}</span>
-                    </div>
-                  ))}
-                </div>
+                <span className="text-yellow-400 font-bold">0 pts</span>
               </div>
-            </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 빠른 메뉴 */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { href: '/drivers', label: '👥 드라이버', desc: '능력치 확인' },
+            { href: '/garage', label: '🔧 차고', desc: '차량 업그레이드' },
+            { href: '/team', label: '🏢 팀 관리', desc: '시설 업그레이드' },
+            { href: '/finances', label: '💰 재정', desc: '예산 현황' },
+            { href: '/race', label: '🏁 레이스', desc: '일정 확인' },
+          ].map((menu) => (
+            <Link
+              key={menu.href}
+              href={menu.href}
+              className="bg-gray-900 hover:bg-gray-800 rounded-xl p-4 border border-gray-800 hover:border-gray-600 transition"
+            >
+              <p className="font-bold mb-1">{menu.label}</p>
+              <p className="text-gray-500 text-xs">{menu.desc}</p>
+            </Link>
           ))}
         </div>
 
-        {/* 차량 */}
-        {car && (
-          <>
-            <h2 className="text-xl font-bold mb-4" style={{ color: teamColor }}>🔧 차량</h2>
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <p className="text-gray-500 text-xs mb-3 uppercase tracking-widest">차량</p>
-                {[
-                  { label: '에어로', value: car.actual_aerodynamics },
-                  { label: '섀시', value: car.actual_chassis },
-                  { label: '신뢰성', value: car.actual_reliability },
-                  { label: '타이어 관리', value: car.actual_tyre_management },
-                ].map((stat) => (
-                  <div key={stat.label} className="flex items-center gap-3 mb-2">
-                    <span className="text-gray-400 text-sm w-16">{stat.label}</span>
-                    <div className="flex-1 bg-gray-800 rounded-full h-2">
-                      <div className="h-2 rounded-full" style={{ width: `${stat.value}%`, backgroundColor: teamColor }} />
-                    </div>
-                    <span className="text-white text-sm font-bold w-6">{stat.value}</span>
-                  </div>
-                ))}
-              </div>
-              {pu && (
-                <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                  <p className="text-gray-500 text-xs mb-3 uppercase tracking-widest">파워유닛 — {pu.manufacturer}</p>
-                  {[
-                    { label: '출력', value: pu.actual_power },
-                    { label: '배포', value: pu.actual_deployment },
-                    { label: '신뢰성', value: pu.actual_reliability },
-                    { label: '내구성', value: pu.actual_durability },
-                  ].map((stat) => (
-                    <div key={stat.label} className="flex items-center gap-3 mb-2">
-                      <span className="text-gray-400 text-sm w-16">{stat.label}</span>
-                      <div className="flex-1 bg-gray-800 rounded-full h-2">
-                        <div className="h-2 rounded-full" style={{ width: `${stat.value}%`, backgroundColor: teamColor }} />
-                      </div>
-                      <span className="text-white text-sm font-bold w-6">{stat.value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
       </div>
     </main>
   )

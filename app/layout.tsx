@@ -22,6 +22,7 @@ export default function RootLayout({
           <Link href="/drivers" className="text-gray-400 hover:text-white transition">드라이버</Link>
           <Link href="/garage" className="text-gray-400 hover:text-white transition">차고</Link>
           <Link href="/finances" className="text-gray-400 hover:text-white transition">재정</Link>
+          <Link href="/standings" className="text-gray-400 hover:text-white transition">순위</Link>
           <Link href="/race" className="text-gray-400 hover:text-white transition">레이스</Link>
         </nav>
         {children}

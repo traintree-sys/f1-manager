@@ -26,6 +26,72 @@ interface Props {
   saves: Save[]
 }
 
+const WORKS_TEAMS = ['Mercedes-AMG', 'Scuderia Ferrari HP', 'Oracle Red Bull Racing', 'Aston Martin Aramco', 'Audi Revolut']
+
+const PU_INCOME: Record<string, number> = {
+  'Mercedes-AMG': 45000000,
+  'Scuderia Ferrari HP': 30000000,
+  'Oracle Red Bull Racing': 15000000,
+  'Aston Martin Aramco': 0,
+  'Audi Revolut': 0,
+}
+
+const SPONSOR_ANNUAL: Record<string, number> = {
+  'McLaren Mastercard': 180000000,
+  'Mercedes-AMG': 170000000,
+  'Oracle Red Bull Racing': 175000000,
+  'Scuderia Ferrari HP': 185000000,
+  'Atlassian Williams': 90000000,
+  'Visa Cash App Racing Bulls': 85000000,
+  'Aston Martin Aramco': 120000000,
+  'TGR Haas': 75000000,
+  'Audi Revolut': 100000000,
+  'BWT Alpine': 95000000,
+  'Cadillac': 80000000,
+}
+
+const CAP_STAFF: Record<string, number> = {
+  'McLaren Mastercard': 45000000,
+  'Mercedes-AMG': 48000000,
+  'Oracle Red Bull Racing': 50000000,
+  'Scuderia Ferrari HP': 47000000,
+  'Atlassian Williams': 30000000,
+  'Visa Cash App Racing Bulls': 28000000,
+  'Aston Martin Aramco': 35000000,
+  'TGR Haas': 25000000,
+  'Audi Revolut': 32000000,
+  'BWT Alpine': 33000000,
+  'Cadillac': 27000000,
+}
+
+const CAP_TRACK: Record<string, number> = {
+  'McLaren Mastercard': 55000000,
+  'Mercedes-AMG': 55000000,
+  'Oracle Red Bull Racing': 55000000,
+  'Scuderia Ferrari HP': 55000000,
+  'Aston Martin Aramco': 40000000,
+  'Audi Revolut': 40000000,
+  'BWT Alpine': 40000000,
+  'Atlassian Williams': 30000000,
+  'Visa Cash App Racing Bulls': 30000000,
+  'TGR Haas': 30000000,
+  'Cadillac': 30000000,
+}
+
+const CAP_PARTS: Record<string, number> = {
+  'McLaren Mastercard': 20000000,
+  'Mercedes-AMG': 20000000,
+  'Oracle Red Bull Racing': 20000000,
+  'Scuderia Ferrari HP': 20000000,
+  'Aston Martin Aramco': 17000000,
+  'Audi Revolut': 17000000,
+  'BWT Alpine': 17000000,
+  'Atlassian Williams': 15000000,
+  'Visa Cash App Racing Bulls': 15000000,
+  'TGR Haas': 15000000,
+  'Cadillac': 15000000,
+}
+
 export default function TeamSelectClient({ teams, saves }: Props) {
   const router = useRouter()
   const [step, setStep] = useState<'slot' | 'team'>('slot')
@@ -51,6 +117,11 @@ export default function TeamSelectClient({ teams, saves }: Props) {
     if (!selectedSlot) return
     setLoading(true)
 
+    const isWorks = WORKS_TEAMS.includes(team.name)
+    const staffCost = CAP_STAFF[team.name] || 25000000
+    const trackCost = CAP_TRACK[team.name] || 30000000
+    const partsCost = CAP_PARTS[team.name] || 15000000
+
     await supabase.from('saves').upsert({
       slot: selectedSlot,
       team_id: team.id,
@@ -61,6 +132,23 @@ export default function TeamSelectClient({ teams, saves }: Props) {
       current_race: 1,
       points: 0,
       updated_at: new Date().toISOString(),
+      budget_cap: 215000000,
+      sponsor_annual: SPONSOR_ANNUAL[team.name] || 80000000,
+      is_works_team: isWorks,
+      pu_income: PU_INCOME[team.name] || 0,
+      pu_expense: isWorks ? 0 : 15000000,
+      pu_dev_cost: isWorks ? 130000000 : 0,
+      cap_staff_cost: staffCost,
+      cap_track_cost: trackCost,
+      cap_parts_cost: partsCost,
+      cap_spent: staffCost + trackCost + partsCost,
+      total_income: 0,
+      total_expense: 0,
+      prize_income: 0,
+      sponsor_income: 0,
+      cap_vehicle_dev: 0,
+      constructor_rank: 0,
+      season_finished: false,
     }, { onConflict: 'slot' })
 
     localStorage.setItem('selectedSlot', String(selectedSlot))
@@ -93,15 +181,11 @@ export default function TeamSelectClient({ teams, saves }: Props) {
               className="bg-gray-900 hover:bg-gray-800 rounded-xl p-5 text-left transition border-2"
               style={{ borderColor: team.color }}
             >
-              <div
-                className="w-8 h-8 rounded-full mb-3"
-                style={{ backgroundColor: team.color }}
-              />
-              <p className="font-bold text-lg mb-1" style={{ color: team.color }}>
-                {team.name}
-              </p>
-              <p className="text-gray-400 text-sm">
-                예산: ${(team.budget / 1000000).toFixed(0)}M
+              <div className="w-8 h-8 rounded-full mb-3" style={{ backgroundColor: team.color }} />
+              <p className="font-bold text-lg mb-1" style={{ color: team.color }}>{team.name}</p>
+              <p className="text-gray-400 text-sm">예산: ${(team.budget / 1000000).toFixed(0)}M</p>
+              <p className="text-gray-500 text-xs mt-1">
+                {WORKS_TEAMS.includes(team.name) ? '🔧 워크스팀' : '🛒 커스터머팀'}
               </p>
             </button>
           ))}
