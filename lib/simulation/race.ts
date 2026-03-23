@@ -15,6 +15,7 @@ export interface DriverRaceResult {
   retired: boolean
   retiredLap?: number
   penaltySeconds: number
+  pendingPenaltySeconds: number
   licensePointsAdded: number
   partsDamageCost: number
   tyre: TyreCompound
@@ -133,9 +134,10 @@ export function initRaceState(
     fastestLap: false,
     retired: false,
     penaltySeconds: 0,
+    pendingPenaltySeconds: 0,
     licensePointsAdded: 0,
     partsDamageCost: 0,
-    tyre: qr.driverId === playerDriverId ? playerTyre : qr.tyre,
+    tyre: qr.driverId === playerDriverId ? playerTyre : (qr.tyre || '미디엄'),
     pitStops: 0,
   }))
 
@@ -181,7 +183,6 @@ export function doStart(
     driverStats,
     playerDriverIds
   )
-
   return {
     ...state,
     driverPositions: newPositions,
@@ -213,7 +214,7 @@ export function resolveRaceEvent(
   if (playerIndex !== -1) {
     const player = { ...newPositions[playerIndex] }
 
-    if (result.positionChange !== 0) {
+    if (result.positionChange !== 0 && result.positionChange > -50) {
       const newPos = Math.max(1, Math.min(22, player.finishPosition - result.positionChange))
       const swapIndex = newPositions.findIndex(d =>
         d.driverId !== playerDriverId && d.finishPosition === newPos
@@ -233,25 +234,44 @@ export function resolveRaceEvent(
       player.finishPosition = 22
     }
 
-    if (optionId.startsWith('pit_') && optionId !== 'pit_repair') {
+    // 피트스톱 처리 — 피트인 시 펜딩 페널티 서빙
+    const isPit = (
+      optionId === 'pit_soft' ||
+      optionId === 'pit_medium' ||
+      optionId === 'pit_hard' ||
+      optionId === 'pit_now' ||
+      optionId === 'pit_repair' ||
+      optionId === 'pit_inter'
+    )
+    if (isPit) {
       player.pitStops += 1
+      if (player.pendingPenaltySeconds > 0) {
+        player.penaltySeconds += player.pendingPenaltySeconds
+        player.pendingPenaltySeconds = 0
+      }
     }
 
-    player.penaltySeconds += result.timeChange > 0 ? result.timeChange : 0
+    // 페널티 시간 — pending에 추가 (레이스 종료 또는 다음 피트인 시 적용)
+    if (result.timeChange > 0) {
+      player.pendingPenaltySeconds += result.timeChange
+    }
+
     player.licensePointsAdded += result.penaltyPointsAdded
     player.partsDamageCost += result.partsDamageCost
-
     newPositions[playerIndex] = player
   }
 
+  // AI 랜덤 포지션 변동
   if (Math.random() < 0.3) {
     const randomIdx1 = Math.floor(Math.random() * newPositions.length)
     const randomIdx2 = Math.floor(Math.random() * newPositions.length)
-    if (randomIdx1 !== randomIdx2 &&
+    if (
+      randomIdx1 !== randomIdx2 &&
       !newPositions[randomIdx1].retired &&
       !newPositions[randomIdx2].retired &&
       newPositions[randomIdx1].driverId !== playerDriverId &&
-      newPositions[randomIdx2].driverId !== playerDriverId) {
+      newPositions[randomIdx2].driverId !== playerDriverId
+    ) {
       const temp = newPositions[randomIdx1].finishPosition
       newPositions[randomIdx1] = { ...newPositions[randomIdx1], finishPosition: newPositions[randomIdx2].finishPosition }
       newPositions[randomIdx2] = { ...newPositions[randomIdx2], finishPosition: temp }
@@ -272,9 +292,7 @@ export function resolveRaceEvent(
 
 export function advanceToNextEvent(state: RaceState): RaceState {
   const nextEvent = state.events[state.eventIndex]
-  if (!nextEvent) {
-    return finishRace(state)
-  }
+  if (!nextEvent) return finishRace(state)
   return {
     ...state,
     currentEvent: nextEvent,
@@ -294,27 +312,38 @@ export function finishRace(state: RaceState): RaceState {
     }
   })
 
+  // 펜딩 페널티 레이스 종료 후 적용
+  newPositions.forEach((driver, idx) => {
+    if (!driver.retired && driver.pendingPenaltySeconds > 0) {
+      newPositions[idx] = {
+        ...driver,
+        penaltySeconds: driver.penaltySeconds + driver.pendingPenaltySeconds,
+        pendingPenaltySeconds: 0,
+      }
+    }
+  })
+
+  // 페널티 포함 순위 재정렬
   newPositions.sort((a, b) => {
     if (a.retired && !b.retired) return 1
     if (!a.retired && b.retired) return -1
-    return a.finishPosition - b.finishPosition
+    const aScore = a.finishPosition * 100 + a.penaltySeconds
+    const bScore = b.finishPosition * 100 + b.penaltySeconds
+    return aScore - bScore
   })
-  newPositions.forEach((d, i) => { newPositions[i] = { ...d, finishPosition: i + 1 } })
-
-  newPositions.forEach((driver, idx) => {
-    if (!driver.retired) {
-      newPositions[idx] = { ...driver, points: getPoints(driver.finishPosition) }
+  newPositions.forEach((d, i) => {
+    newPositions[i] = {
+      ...d,
+      finishPosition: i + 1,
+      points: d.retired ? 0 : getPoints(i + 1),
     }
   })
 
   const leader = newPositions.find(d => !d.retired && d.finishPosition === 1)
-if (leader) {
-  const leaderIdx = newPositions.findIndex(d => d.driverId === leader.driverId)
-  newPositions[leaderIdx] = {
-    ...newPositions[leaderIdx],
-    fastestLap: true,
+  if (leader) {
+    const leaderIdx = newPositions.findIndex(d => d.driverId === leader.driverId)
+    newPositions[leaderIdx] = { ...newPositions[leaderIdx], fastestLap: true }
   }
-}
 
   return {
     ...state,
@@ -325,7 +354,10 @@ if (leader) {
   }
 }
 
-export function getPlayerResult(state: RaceState, playerDriverId: string): DriverRaceResult | undefined {
+export function getPlayerResult(
+  state: RaceState,
+  playerDriverId: string
+): DriverRaceResult | undefined {
   return state.driverPositions.find(d => d.driverId === playerDriverId)
 }
 

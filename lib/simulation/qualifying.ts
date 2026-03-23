@@ -51,7 +51,6 @@ export const BASE_LAP_TIMES: Record<string, number> = {
   '아부다비 그랑프리 (야스마리나)': 84.701,
 }
 
-// 서킷 특성 (AI 전략 선택에 사용)
 export const CIRCUIT_CHARACTERISTICS: Record<string, 'high_speed' | 'street' | 'technical' | 'balanced'> = {
   '호주 그랑프리 (멜버른)': 'street',
   '중국 그랑프리 (상하이)': 'balanced',
@@ -77,6 +76,32 @@ export const CIRCUIT_CHARACTERISTICS: Record<string, 'high_speed' | 'street' | '
   '아부다비 그랑프리 (야스마리나)': 'balanced',
 }
 
+// 서킷별 액티브 에어로 효과 (고속일수록 효과 큼, 시가지는 효과 작음)
+export const ACTIVE_AERO_EFFECT: Record<string, number> = {
+  '호주 그랑프리 (멜버른)': 0.4,
+  '중국 그랑프리 (상하이)': 0.7,
+  '일본 그랑프리 (스즈카)': 0.8,
+  '마이애미 그랑프리': 0.5,
+  '캐나다 그랑프리 (몬트리올)': 0.6,
+  '모나코 그랑프리': 0.2,
+  '스페인 그랑프리 (바르셀로나)': 0.7,
+  '오스트리아 그랑프리 (레드불링)': 0.9,
+  '영국 그랑프리 (실버스톤)': 0.9,
+  '벨기에 그랑프리 (스파)': 1.0,
+  '헝가리 그랑프리 (부다페스트)': 0.5,
+  '네덜란드 그랑프리 (잔드보르트)': 0.6,
+  '이탈리아 그랑프리 (몬자)': 1.0,
+  '마드리드 그랑프리': 0.7,
+  '아제르바이잔 그랑프리 (바쿠)': 0.5,
+  '싱가포르 그랑프리': 0.3,
+  '미국 그랑프리 (오스틴)': 0.7,
+  '멕시코시티 그랑프리': 0.8,
+  '상파울루 그랑프리': 0.7,
+  '라스베이거스 그랑프리': 0.8,
+  '카타르 그랑프리': 0.9,
+  '아부다비 그랑프리 (야스마리나)': 0.7,
+}
+
 export const TYRE_TIME_DELTA: Record<TyreCompound, number> = {
   '소프트': 0,
   '미디엄': 0.4,
@@ -97,47 +122,35 @@ export const STRATEGY_MISTAKE_CHANCE: Record<QualifyingStrategy, number> = {
   '보수적': 2,
 }
 
-// AI 전략 자동 선택
 export function selectAIStrategy(
   circuitName: string,
   weather: WeatherState,
   driverPace: number
 ): QualifyingStrategy {
   const characteristic = CIRCUIT_CHARACTERISTICS[circuitName] || 'balanced'
-
-  // 우천시 보수적
   if (weather.current === 'wet') return '보수적'
   if (weather.current === 'mixed') return Math.random() < 0.5 ? '보수적' : '균형'
-
-  // 서킷 특성 + 드라이버 페이스 기반
   if (characteristic === 'street') {
-    // 시가지: 실수 위험 높음 → 보수적 선호
     if (driverPace >= 90) return Math.random() < 0.4 ? '공격적' : '균형'
     return Math.random() < 0.3 ? '균형' : '보수적'
   } else if (characteristic === 'high_speed') {
-    // 고속: 공격적 유리
     if (driverPace >= 90) return Math.random() < 0.6 ? '공격적' : '균형'
     return Math.random() < 0.4 ? '공격적' : '균형'
   } else if (characteristic === 'technical') {
-    // 기술적: 균형 선호
     if (driverPace >= 90) return Math.random() < 0.4 ? '공격적' : '균형'
     return Math.random() < 0.6 ? '균형' : '보수적'
   }
-
-  // balanced
   if (driverPace >= 92) return Math.random() < 0.5 ? '공격적' : '균형'
   if (driverPace >= 85) return '균형'
   return Math.random() < 0.4 ? '균형' : '보수적'
 }
 
-// AI 타이어 선택
 export function selectAITyre(
   weather: WeatherState,
   session: 'Q1' | 'Q2' | 'Q3'
 ): TyreCompound {
   if (weather.current === 'wet') return Math.random() < 0.7 ? '인터미디어트' : '풀웨트'
   if (weather.current === 'mixed') return '인터미디어트'
-  // 드라이: 거의 소프트
   if (session === 'Q3') return '소프트'
   return Math.random() < 0.85 ? '소프트' : '미디엄'
 }
@@ -150,13 +163,18 @@ export function calculateQualifyingTime(
   tyre: TyreCompound,
   strategy: QualifyingStrategy,
   weather: WeatherState,
+  circuitName: string = '',
 ): number {
   const driverBonus = ((driverStats.actual_qualifying_pace || driverStats.qualifying_pace || 70) - 80) * 0.015
   const carBonus = (
     ((carStats.actual_aerodynamics || 80) - 80) * 0.008 +
     ((carStats.actual_chassis || 80) - 80) * 0.006
   )
-  const puBonus = ((puStats?.actual_power || 80) - 80) * 0.005
+
+  // 2026 규정: deployment 가중치 대폭 증가 (전기모터 50% 비중)
+  const puPowerBonus = ((puStats?.actual_power || 80) - 80) * 0.004
+  const puDeployBonus = ((puStats?.actual_deployment || 80) - 80) * 0.008 // deployment 2배 가중치
+
   const tyreDelta = TYRE_TIME_DELTA[tyre]
   const strategyDelta = STRATEGY_DELTA[strategy]
   const mistakeChance = STRATEGY_MISTAKE_CHANCE[strategy]
@@ -169,7 +187,8 @@ export function calculateQualifyingTime(
 
   return Math.max(
     baseTime * 0.95,
-    baseTime - driverBonus - carBonus - puBonus + tyreDelta + strategyDelta + mistakeDelta + wetPenalty + random
+    baseTime - driverBonus - carBonus - puPowerBonus - puDeployBonus
+    + tyreDelta + strategyDelta + mistakeDelta + wetPenalty + random
   )
 }
 
@@ -193,7 +212,6 @@ export function runQualifyingSession(
 ): DriverQualifyingResult[] {
   const baseTime = BASE_LAP_TIMES[circuitName] || 85
 
-  // 탈락자 제외
   let activeDrivers = drivers
   if (previousResults) {
     const eliminated = previousResults
@@ -216,7 +234,7 @@ export function runQualifyingSession(
 
     const time = calculateQualifyingTime(
       baseTime, driver, car || {}, pu || {},
-      tyre, strategy, weather
+      tyre, strategy, weather, circuitName
     )
 
     return {
@@ -233,12 +251,8 @@ export function runQualifyingSession(
     }
   })
 
-  // 순위 정렬
   results.sort((a, b) => (a.finalTime || 0) - (b.finalTime || 0))
-  results.forEach((r, i) => r.position = i + 1)
 
-  // Q1: 하위 6명 탈락 (22→16)
-  // Q2: 하위 6명 탈락 (16→10)
   if (session === 'Q1') {
     results.slice(16).forEach(r => {
       r.eliminated = true
@@ -251,15 +265,16 @@ export function runQualifyingSession(
     })
   }
 
-  // 이전 결과 병합
-  if (previousResults) {
-    const eliminatedPrev = previousResults.filter(r => r.eliminated)
-    return [...results, ...eliminatedPrev].sort((a, b) => {
-      if (a.eliminated && !b.eliminated) return 1
-      if (!a.eliminated && b.eliminated) return -1
-      return (a.finalTime || 999) - (b.finalTime || 999)
-    })
-  }
+  const survivors = results.filter(r => !r.eliminated)
+    .sort((a, b) => (a.finalTime || 999) - (b.finalTime || 999))
+  const eliminatedCurrent = results.filter(r => r.eliminated)
+    .sort((a, b) => (a.finalTime || 999) - (b.finalTime || 999))
+  const eliminatedOld = previousResults
+    ? previousResults.filter(r => r.eliminated)
+      .sort((a, b) => (a.finalTime || 999) - (b.finalTime || 999))
+    : []
 
-  return results
+  const final = [...survivors, ...eliminatedCurrent, ...eliminatedOld]
+  final.forEach((r, i) => { r.position = i + 1 })
+  return final
 }
